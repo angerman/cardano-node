@@ -17,7 +17,7 @@ import qualified Cardano.Node.Tracing.Tracers.Consensus as ConsensusTracers
 import           Cardano.Protocol.Crypto (StandardCrypto)
 import           Cardano.Tracing.HasIssuer (HasIssuer)
 import           Ouroboros.Consensus.Block (BlockProtocol, CannotForge, ForgeStateUpdateError,
-                   GetHeader, HasHeader, Header)
+                   GetHeader, HasHeader, Header, HeaderHash)
 import           Ouroboros.Consensus.HeaderValidation (OtherHeaderEnvelopeError)
 import           Ouroboros.Consensus.Ledger.Abstract (LedgerError)
 import           Ouroboros.Consensus.Ledger.Inspect (LedgerEvent, LedgerUpdate, LedgerWarning)
@@ -61,6 +61,7 @@ type TraceConstraints blk =
 
     , ToJSON (BlockNodeToClientVersion blk)
     , ToJSON (BlockNodeToNodeVersion blk)
+    , ToJSON (HeaderHash blk)
 
     , LogFormatting (ApplyTxErr blk)
     , LogFormatting (GenTx blk)

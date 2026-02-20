@@ -29,6 +29,7 @@ module Cardano.Tracing.Tracers
   , traceCounter
   ) where
 
+import qualified Data.List as List
 import           Cardano.BM.Data.Aggregated (Measurable (..))
 import           Cardano.BM.Data.Tracer (WithSeverity (..), annotateSeverity)
 import           Cardano.BM.Data.Transformers
@@ -45,6 +46,7 @@ import           Cardano.Node.TraceConstraints
 import           Cardano.Node.Tracing
 import qualified Cardano.Node.Tracing.Tracers.Consensus as ConsensusTracers
 import qualified Cardano.Node.Tracing.Tracers.Diffusion as DiffusionTracers
+import qualified Network.Mux.Tracing as MuxTracers
 import           Cardano.Node.Tracing.Tracers.NodeVersion
 import           Cardano.Network.Diffusion (CardanoPeerSelectionCounters)
 import           Cardano.Protocol.TPraos.OCert (KESPeriod (..))
@@ -58,7 +60,7 @@ import           Cardano.Tracing.Shutdown ()
 import           Cardano.Tracing.Startup ()
 import           Ouroboros.Consensus.Block (BlockConfig, BlockProtocol, CannotForge,
                    ConvertRawHash (..), ForgeStateInfo, ForgeStateUpdateError, Header,
-                   realPointHash, realPointSlot)
+                   HeaderHash, realPointHash, realPointSlot)
 import           Ouroboros.Consensus.BlockchainTime (SystemStart (..),
                    TraceBlockchainTimeEvent (..))
 import           Ouroboros.Consensus.HeaderValidation (OtherHeaderEnvelopeError)
@@ -245,7 +247,7 @@ instance ElidingTracer (WithSeverity (ChainDB.TraceEvent blk)) where
   doelide (WithSeverity _ (ChainDB.TraceAddBlockEvent (ChainDB.SwitchedToAFork{}))) = False
   doelide (WithSeverity _ (ChainDB.TraceAddBlockEvent (ChainDB.AddBlockValidation (ChainDB.InvalidBlock _ _)))) = False
   doelide (WithSeverity _ (ChainDB.TraceAddBlockEvent (ChainDB.AddBlockValidation _))) = True
-  doelide (WithSeverity _ (ChainDB.TraceAddBlockEvent (ChainDB.AddedToCurrentChain events _ _ _))) = null events
+  doelide (WithSeverity _ (ChainDB.TraceAddBlockEvent (ChainDB.AddedToCurrentChain events _ _ _ _))) = null events
   doelide (WithSeverity _ (ChainDB.TraceAddBlockEvent (ChainDB.PipeliningEvent{}))) = True
   doelide (WithSeverity _ (ChainDB.TraceAddBlockEvent _)) = True
   doelide (WithSeverity _ (ChainDB.TraceCopyToImmutableDBEvent _)) = True
@@ -395,11 +397,11 @@ mkTracers blockConfig tOpts@(TracingOnLegacy trSel) tr nodeKern ekgDirect = do
      { Diffusion.dtMuxTracer            = muxTracer ekgDirect trSel tr
      , Diffusion.dtChannelTracer        = channelTracer
      , Diffusion.dtBearerTracer         = bearerTracer
-     , Diffusion.dtHandshakeTracer      = handshakeTracer
+     , Diffusion.dtHandshakeTracer      = undefined -- TODO(10.7)
      , Diffusion.dtLocalMuxTracer       = localMuxTracer
      , Diffusion.dtLocalChannelTracer   = localChannelTracer
      , Diffusion.dtLocalBearerTracer    = localBearerTracer
-     , Diffusion.dtLocalHandshakeTracer = localHandshakeTracer
+     , Diffusion.dtLocalHandshakeTracer = undefined -- TODO(10.7)
      , Diffusion.dtDiffusionTracer      = initializationTracer
      , Diffusion.dtTraceLocalRootPeersTracer =
          tracerOnOff (traceLocalRootPeers trSel)
@@ -407,14 +409,7 @@ mkTracers blockConfig tOpts@(TracingOnLegacy trSel) tr nodeKern ekgDirect = do
      , Diffusion.dtTracePublicRootPeersTracer =
          tracerOnOff (tracePublicRootPeers trSel)
                       verb "PublicRootPeers" tr
-     , Diffusion.dtTracePeerSelectionTracer =
-            tracerOnOff (tracePeerSelection trSel)
-                         verb "PeerSelection" tr
-         <> tracePeerSelectionTracerMetrics
-              (tracePeerSelection trSel)
-              ekgDirect
-       tracerOnOff (traceDebugPeerSelectionInitiatorResponderTracer trSel)
-                    verb "DebugPeerSelection" tr
+     , Diffusion.dtTracePeerSelectionTracer = undefined -- TODO(10.7)
      , Diffusion.dtTracePeerSelectionCounters =
            tracePeerSelectionCountersMetrics
              (tracePeerSelectionCounters trSel)
@@ -471,10 +466,10 @@ mkTracers blockConfig tOpts@(TracingOnLegacy trSel) tr nodeKern ekgDirect = do
      tracerOnOff (traceMux trSel) verb "LocalMuxChannel" tr
    localBearerTracer =
      tracerOnOff (traceMux trSel) verb "LocalMuxBearerTracer" tr
-   localHandshakeTracer =
-     tracerOnOff (traceLocalHandshake trSel) verb "LocalHandshake" tr
-   handshakeTracer =
-     tracerOnOff (traceHandshake trSel) verb "Handshake" tr
+   -- localHandshakeTracer =
+   --   tracerOnOff (traceLocalHandshake trSel) verb "LocalHandshake" tr
+   -- handshakeTracer =
+   --   tracerOnOff (traceHandshake trSel) verb "Handshake" tr
    initializationTracer =
      tracerOnOff (traceDiffusionInitialization trSel) verb
        "DiffusionInitializationTracer" tr
@@ -540,8 +535,25 @@ notifyTxsMempoolTimeoutHard :: Maybe EKGDirect -> Tracer IO Mux.Trace
 notifyTxsMempoolTimeoutHard mbEKGDirect = case mbEKGDirect of
   Nothing -> nullTracer
   Just ekgDirect -> Tracer $ \ev -> do
-    when (DiffusionTracers.impliesMempoolTimeoutHard ev) $ do
-      sendEKGDirectCounter ekgDirect $ "cardano.node.metrics." <> DiffusionTracers.txsMempoolTimeoutHardCounterName
+    when (impliesMempoolTimeoutHard ev) $ do
+      sendEKGDirectCounter ekgDirect $ "cardano.node.metrics." <> txsMempoolTimeoutHardCounterName
+
+impliesMempoolTimeoutHard :: Mux.Trace -> Bool
+impliesMempoolTimeoutHard = \case
+  Mux.TraceExceptionExit _mid _dir e
+{-- TODO: In cardano-node master this is implemented as:
+ --
+ -- > | Just _ <- fromException @ExnMempoolTimeout e
+ -- >   -> True
+ --
+ -- but `ExnMempoolTimeout` is defined in `ouroboros-consensus` which is not a
+ -- dependency of `ouroboros-network`.
+ --}
+    | List.isPrefixOf "ExnMempoolTimeout " (show e) -> True
+  _ -> False
+
+txsMempoolTimeoutHardCounterName :: Text
+txsMempoolTimeoutHardCounterName = "txsMempoolTimeoutHard"
 
 muxTracer
   :: Maybe EKGDirect
@@ -570,6 +582,7 @@ teeTraceChainTip
      , ToObject (Header blk)
      , ToObject (LedgerEvent blk)
      , ToObject (WeightedSelectView (BlockProtocol blk))
+     , ToJSON (HeaderHash blk)
      )
   => BlockConfig blk
   -> ForgingStats
@@ -594,6 +607,7 @@ teeTraceChainTipElide
      , ToObject (Header blk)
      , ToObject (LedgerEvent blk)
      , ToObject (WeightedSelectView (BlockProtocol blk))
+     , ToJSON (HeaderHash blk)
      )
   => TracingVerbosity
   -> MVar (Maybe (WithSeverity (ChainDB.TraceEvent blk)), Integer)
@@ -625,11 +639,11 @@ traceChainMetrics (Just _ekgDirect) tForks _blockConfig _fStats tr = do
     chainTipInformation :: ChainDB.TraceEvent blk -> Maybe ChainInformation
     chainTipInformation = \case
       ChainDB.TraceAddBlockEvent ev -> case ev of
-        ChainDB.SwitchedToAFork _warnings selChangedInfo oldChain newChain ->
+        ChainDB.SwitchedToAFork _warnings selChangedInfo oldChain newChain _switchReason ->
           let fork = not $ AF.withinFragmentBounds (AF.headPoint oldChain)
                               newChain in
           Just $ chainInformation selChangedInfo fork oldChain newChain 0
-        ChainDB.AddedToCurrentChain _warnings selChangedInfo oldChain newChain ->
+        ChainDB.AddedToCurrentChain _warnings selChangedInfo oldChain newChain _switchReason ->
           Just $ chainInformation selChangedInfo False oldChain newChain 0
         _ -> Nothing
       _ -> Nothing
@@ -743,6 +757,7 @@ mkConsensusTracers
      , ToJSON peer
      , LedgerQueries blk
      , ToJSON (GenTxId blk)
+     , ToJSON (HeaderHash blk)
      , ToObject (ApplyTxErr blk)
      , ToObject (CannotForge blk)
      , ToObject (GenTx blk)
@@ -771,7 +786,7 @@ mkConsensusTracers mbEKGDirect trSel verb tr nodeKern fStats = do
   tBlocksServed <- STM.newTVarIO 0
   tLocalUp <- STM.newTVarIO 0
   tMaxSlotNo <- STM.newTVarIO $ SlotNo 0
-  tSubmissionsCollected <- STM.newTVarIO 0
+  tSubmissionsCollected <- STM.newTVarIO []
   tSubmissionsAccepted <- STM.newTVarIO 0
   tSubmissionsRejected <- STM.newTVarIO 0
   tBlockDelayM <- STM.newTVarIO Pq.empty
@@ -802,8 +817,8 @@ mkConsensusTracers mbEKGDirect trSel verb tr nodeKern fStats = do
             traceWith (annotateSeverity . toLogObject' verb $ appendName "TxInbound" tr) ev
             case ev of
               TraceLabelPeer _ (TraceTxSubmissionCollected collected) ->
-                traceI trmet meta "submissions.submitted.count" =<<
-                  STM.modifyReadTVarIO tSubmissionsCollected (+ collected)
+                traceI trmet meta "submissions.submitted.count" . length =<<
+                  STM.modifyReadTVarIO tSubmissionsCollected (<> collected)
 
               TraceLabelPeer _ (TraceTxSubmissionProcessed processed) -> do
                 traceI trmet meta "submissions.accepted.count" =<<
@@ -1059,15 +1074,15 @@ traceLeadershipChecks _ft nodeKern _tverb tr = Tracer $
         !query <- mapNodeKernelDataIO
                     (\nk ->
                        (,,)
-                         <$> fmap (maybe 0 LedgerDB.ledgerTableSize) (ChainDB.getStatistics $ getChainDB nk)
+                         <$> ChainDB.getStatistics (getChainDB nk)
                          <*> nkQueryLedger (ledgerDelegMapSize . ledgerState) nk
                          <*> nkQueryChain fragmentChainDensity nk)
                     nodeKern
         meta <- mkLOMeta sev Public
         fromSMaybe (pure ()) $
           query <&>
-            \(utxoSize, delegMapSize, _) -> do
-                traceCounter "utxoSize"     tr utxoSize
+            \(ledgerStatistics, delegMapSize, _) -> do
+                traceCounter "utxoSize"     tr (LedgerDB.ledgerTableSize ledgerStatistics)
                 traceCounter "delegMapSize" tr delegMapSize
         traceNamedObject (appendName "LeadershipCheck" tr)
           ( meta
@@ -1077,8 +1092,8 @@ traceLeadershipChecks _ft nodeKern _tverb tr = Tracer $
             ,("slot", toJSON $ unSlotNo slot)]
             ++ fromSMaybe []
                (query <&>
-                 \(utxoSize, delegMapSize, chainDensity) ->
-                   [ ("utxoSize",     toJSON utxoSize)
+                 \(ledgerStatistics, delegMapSize, chainDensity) ->
+                   [ ("utxoSize",     toJSON (LedgerDB.ledgerTableSize ledgerStatistics))
                    , ("delegMapSize", toJSON delegMapSize)
                    , ("chainDensity", toJSON (fromRational chainDensity :: Float))
                    ])
@@ -1314,6 +1329,7 @@ mempoolTracer
   :: ( ToJSON (GenTxId blk)
      , ToObject (ApplyTxErr blk)
      , ToObject (GenTx blk)
+     , ToJSON (HeaderHash blk)
      , LedgerSupportsMempool blk
      , ConvertRawHash blk
      )
@@ -1334,6 +1350,7 @@ mempoolTracer mbEKGDirect tc tracer fStats = Tracer $ \ev -> do
 mpTracer :: ( ToJSON (GenTxId blk)
             , ToObject (ApplyTxErr blk)
             , ToObject (GenTx blk)
+            , ToJSON (HeaderHash blk)
             , ConvertRawHash blk
             , LedgerSupportsMempool blk
             )
@@ -1504,6 +1521,7 @@ teeTraceBlockFetchDecision
     :: ( Eq peer
        , Show peer
        , ToJSON peer
+       , ToJSON (HeaderHash blk)
        , HasHeader blk
        , ConvertRawHash blk
        )
@@ -1535,6 +1553,7 @@ teeTraceBlockFetchDecisionElide
     :: ( Eq peer
        , Show peer
        , ToJSON peer
+       , ToJSON (HeaderHash blk)
        , HasHeader blk
        , ConvertRawHash blk
        )
@@ -1585,15 +1604,15 @@ traceConnectionManagerTraceMetrics (OnOff True) (Just ekgDirect) = cmtTracer
 
 
 tracePeerSelectionTracerMetrics
-    :: forall extraDebugState extraFlags extraPeers peeraddr.
+    :: forall extraDebugState extraFlags extraPeers extraTracer peeraddr.
        OnOff TracePeerSelection
     -> Maybe EKGDirect
-    -> Tracer IO (Governor.TracePeerSelection extraDebugState extraFlags extraPeers peeraddr)
+    -> Tracer IO (Governor.TracePeerSelection extraDebugState extraFlags extraPeers extraTracer peeraddr)
 tracePeerSelectionTracerMetrics _             Nothing          = nullTracer
 tracePeerSelectionTracerMetrics (OnOff False) _                = nullTracer
 tracePeerSelectionTracerMetrics (OnOff True)  (Just ekgDirect) = pstTracer
   where
-    pstTracer :: Tracer IO (Governor.TracePeerSelection extraDebugState extraFlags extraPeers peeraddr)
+    pstTracer :: Tracer IO (Governor.TracePeerSelection extraDebugState extraFlags extraPeers extraTracer peeraddr)
     pstTracer = Tracer $ \a -> do
       case a of
         Governor.TraceChurnAction duration action _ ->
@@ -1664,18 +1683,6 @@ tracePeerSelectionCountersMetrics (OnOff True)  (Just ekgDirect) = pscTracer
       sendEKGDirectInt ekgDirect "cardano.node.metrics.peerSelection.WarmBootstrapPeersPromotions" (snd $ Cardano.viewWarmBootstrapPeersPromotions extraCounters)
       sendEKGDirectInt ekgDirect "cardano.node.metrics.peerSelection.ActiveBootstrapPeers" (snd $ Cardano.viewActiveBootstrapPeers extraCounters)
       sendEKGDirectInt ekgDirect "cardano.node.metrics.peerSelection.ActiveBootstrapPeersDemotions" (snd $ Cardano.viewActiveBootstrapPeersDemotions extraCounters)
-
-
-traceChurnCountersMetrics
-    :: Maybe EKGDirect
-    -> Tracer IO ChurnCounters
-traceChurnCountersMetrics Nothing = nullTracer
-traceChurnCountersMetrics (Just ekgDirect) = churnTracer
-  where
-    churnTracer :: Tracer IO ChurnCounters
-    churnTracer = Tracer $ \(ChurnCounter action c) ->
-      sendEKGDirectInt ekgDirect ("cardano.node.metrics.peerSelection.churn." <> Text.pack (show action)) c
-
 
 traceInboundGovernorCountersMetrics
     :: forall addr.
