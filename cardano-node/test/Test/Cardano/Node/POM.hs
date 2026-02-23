@@ -171,6 +171,7 @@ testPartialYamlConfig =
     , pncResponderCoreAffinityPolicy = mempty
     , pncLedgerDbConfig = mempty
     , pncEgressPollInterval = mempty
+    , pncPruningPolicy = mempty
     }
 
 -- | Example partial configuration theoretically created
@@ -221,6 +222,7 @@ testPartialCliConfig =
     , pncResponderCoreAffinityPolicy = mempty
     , pncLedgerDbConfig = mempty
     , pncEgressPollInterval = mempty
+    , pncPruningPolicy = mempty
     }
 
 -- | Expected final NodeConfiguration
@@ -277,6 +279,7 @@ eExpectedConfig = do
     , ncGenesisConfig = disableGenesisConfig
     , ncResponderCoreAffinityPolicy = NoResponderCoreAffinity
     , ncLedgerDbConfig = LedgerDbConfiguration DefaultNumOfDiskSnapshots DefaultSnapshotInterval DefaultQueryBatchSize V2InMemory noDeprecatedOptions
+    , ncPruningPolicy = NodeNoPruning
     }
 
 -- -----------------------------------------------------------------------------

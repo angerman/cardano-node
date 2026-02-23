@@ -239,6 +239,7 @@ instance HasSeverityAnnotation (ChainDB.TraceEvent blk) where
     ImmDB.ChunkFileDoesntFit{} -> Warning
     ImmDB.Migrating{}          -> Debug
     ImmDB.DeletingAfter{}      -> Debug
+    ImmDB.PruningBefore{}      -> Info
     ImmDB.DBAlreadyClosed{}    -> Error
     ImmDB.DBClosed{}           -> Info
     ImmDB.TraceCacheEvent{}    -> Debug
@@ -768,6 +769,7 @@ instance ( ConvertRawHash blk
           "Chunk file doesn't fit. The hash of the block " <> showT ch2 <> " doesn't match the previous hash of the first block in the current epoch: " <> showT ch1 <> "."
         ImmDB.Migrating t -> "Migrating: " <> t
         ImmDB.DeletingAfter wot -> "Deleting chunk files after " <> showT wot
+        ImmDB.PruningBefore cn -> "Pruning chunk files before " <> showT cn
         ImmDB.DBAlreadyClosed {} -> "Immutable DB was already closed. Double closing."
         ImmDB.DBClosed {} -> "Closed Immutable DB."
         ImmDB.TraceCacheEvent ev' -> "Cache event: " <> case ev' of
@@ -1234,6 +1236,10 @@ instance ( ConvertRawHash blk
       mconcat [ "kind" .= String "TraceImmutableDBEvent.DeletingAfter"
                , "immTipHash" .= String (renderWithOrigin renderTipHash immTipWithInfo)
                , "immTipBlockNo" .= String (renderWithOrigin renderTipBlockNo immTipWithInfo)
+               ]
+    ImmDB.PruningBefore chunkNo ->
+      mconcat [ "kind" .= String "TraceImmutableDBEvent.PruningBefore"
+               , "chunkNo" .= String (renderChunkNo chunkNo)
                ]
     ImmDB.DBAlreadyClosed -> mconcat [ "kind" .= String "TraceImmutableDBEvent.DBAlreadyClosed" ]
     ImmDB.DBClosed -> mconcat [ "kind" .= String "TraceImmutableDBEvent.DBClosed" ]

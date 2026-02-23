@@ -2313,6 +2313,10 @@ instance (ConvertRawHash blk, StandardHash blk)
       mconcat [ "kind" .= String "Migrating"
                , "info" .= String txt
                ]
+    forMachine _dtal (ImmDB.PruningBefore chunkNo) =
+      mconcat [ "kind" .= String "PruningBefore"
+               , "chunkNo" .= String (renderChunkNo chunkNo)
+               ]
 
     forHuman ImmDB.NoValidLastLocation =
           "No valid last location was found. Starting from Genesis."
@@ -2349,6 +2353,7 @@ instance (ConvertRawHash blk, StandardHash blk)
           "Chunk file doesn't fit. The hash of the block " <> showT ch2 <> " doesn't match the previous hash of the first block in the current epoch: " <> showT ch1 <> "."
     forHuman (ImmDB.Migrating t) = "Migrating: " <> t
     forHuman (ImmDB.DeletingAfter wot) = "Deleting chunk files after " <> showT wot
+    forHuman (ImmDB.PruningBefore cn) = "Pruning chunk files before " <> showT cn
     forHuman ImmDB.DBAlreadyClosed {} = "Immutable DB was already closed. Double closing."
     forHuman ImmDB.DBClosed {} = "Closed Immutable DB."
     forHuman (ImmDB.TraceCacheEvent ev') = "Cache event: " <> case ev' of
@@ -2367,6 +2372,7 @@ instance MetaTrace (ImmDB.TraceEvent blk) where
     namespaceFor ImmDB.ChunkFileDoesntFit {} = Namespace [] ["ChunkFileDoesntFit"]
     namespaceFor ImmDB.Migrating {} = Namespace [] ["Migrating"]
     namespaceFor ImmDB.DeletingAfter {} = Namespace [] ["DeletingAfter"]
+    namespaceFor ImmDB.PruningBefore {} = Namespace [] ["PruningBefore"]
     namespaceFor ImmDB.DBAlreadyClosed {} = Namespace [] ["DBAlreadyClosed"]
     namespaceFor ImmDB.DBClosed {} = Namespace [] ["DBClosed"]
     namespaceFor (ImmDB.TraceCacheEvent ev) =
@@ -2385,6 +2391,7 @@ instance MetaTrace (ImmDB.TraceEvent blk) where
     severityFor  (Namespace _ ["ChunkFileDoesntFit"]) _ = Just Warning
     severityFor  (Namespace _ ["Migrating"]) _ = Just Debug
     severityFor  (Namespace _ ["DeletingAfter"]) _ = Just Debug
+    severityFor  (Namespace _ ["PruningBefore"]) _ = Just Info
     severityFor  (Namespace _ ["DBAlreadyClosed"]) _ = Just Error
     severityFor  (Namespace _ ["DBClosed"]) _ = Just Info
     severityFor (Namespace out ("CacheEvent" : tl))
@@ -2428,6 +2435,8 @@ instance MetaTrace (ImmDB.TraceEvent blk) where
       "Performing a migration of the on-disk files."
     documentFor (Namespace _ ["DeletingAfter"]) = Just
       "Delete after"
+    documentFor (Namespace _ ["PruningBefore"]) = Just
+      "Pruning chunk files before the given chunk number"
     documentFor (Namespace _ ["DBAlreadyClosed"]) = Just
       ""
     documentFor (Namespace _ ["DBClosed"]) = Just
@@ -2442,6 +2451,7 @@ instance MetaTrace (ImmDB.TraceEvent blk) where
       , Namespace [] ["ChunkFileDoesntFit"]
       , Namespace [] ["Migrating"]
       , Namespace [] ["DeletingAfter"]
+      , Namespace [] ["PruningBefore"]
       , Namespace [] ["DBAlreadyClosed"]
       , Namespace [] ["DBClosed"]
       ]
