@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -50,6 +51,23 @@ import qualified Data.ByteString as BS
 import qualified Data.Text as T
 import           System.Directory (getFileSize)
 import qualified System.IO.MMap as MMap
+
+import Ouroboros.Consensus.HardFork.Combinator.AcrossEras (OneEraHash(..))
+import Ouroboros.Consensus.Shelley.Ledger.Block (ShelleyBlock(..))
+import Ouroboros.Consensus.Protocol.TPraos (TPraos (..), StandardCrypto)
+import qualified Cardano.Ledger.Api as Ledger (ShelleyEra)
+import Cardano.Binary (ToCBOR)
+
+instance ToCBOR
+                         (OneEraHash
+                            '[ShelleyBlock
+                                (TPraos StandardCrypto)
+                                Ledger.ShelleyEra])
+instance FromCBOR
+                         (OneEraHash
+                            '[ShelleyBlock
+                                (TPraos StandardCrypto)
+                                Ledger.ShelleyEra])
 
 ------------------------------------------------------------------------------
 -- Shelley protocol

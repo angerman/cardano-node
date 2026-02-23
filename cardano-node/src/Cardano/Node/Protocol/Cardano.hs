@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -39,6 +40,16 @@ import qualified Ouroboros.Consensus.Cardano.Node as Consensus
 import           Ouroboros.Consensus.HardFork.Combinator.Condense ()
 
 import           Prelude
+
+import Ouroboros.Consensus.HardFork.Combinator.AcrossEras (OneEraHash(..))
+import Ouroboros.Consensus.Shelley.Ledger.Block (ShelleyBlock(..))
+import Ouroboros.Consensus.Protocol.TPraos (TPraos (..), StandardCrypto)
+import qualified Cardano.Ledger.Api as Ledger (ShelleyEra)
+import Cardano.Binary (ToCBOR)
+import Ouroboros.Consensus.Cardano.Block (CardanoShelleyEras)
+
+instance ToCBOR (OneEraHash (ByronBlock : CardanoShelleyEras StandardCrypto))
+instance FromCBOR (OneEraHash (ByronBlock : CardanoShelleyEras StandardCrypto))
 
 ------------------------------------------------------------------------------
 -- Real Cardano protocol

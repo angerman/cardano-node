@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -40,10 +42,23 @@ import           Control.Exception
 import qualified Data.ByteString.Lazy as LB
 import           Data.Maybe (fromMaybe)
 
+import Ouroboros.Consensus.HardFork.Combinator.AcrossEras (OneEraHash(..))
+import Ouroboros.Consensus.Shelley.Ledger.Block (ShelleyBlock(..))
+import Ouroboros.Consensus.Protocol.TPraos (TPraos (..), StandardCrypto)
+import Cardano.Ledger.Api (ByronEra)
+import Cardano.Binary (ToCBOR, FromCBOR)
 
 ------------------------------------------------------------------------------
 -- Byron protocol
 --
+
+instance ToCBOR (OneEraHash '[ByronBlock])
+instance FromCBOR (OneEraHash '[ByronBlock])
+-- instance ToCBOR
+--                          (Ouroboros.Consensus.HardFork.Combinator.AcrossEras.OneEraHash
+--                             [Ouroboros.Consensus.Shelley.Ledger.Block.ShelleyBlock
+--                                 (Ouroboros.Consensus.Protocol.TPraos.TPraos StandardCrypto)
+--                                 ByronEra])
 
 -- | Make 'SomeConsensusProtocol' using the Byron instance.
 --
@@ -167,7 +182,7 @@ data ByronProtocolInstantiationError =
   | SigningKeyFilepathNotSpecified
   deriving Show
 
-instance Exception ByronProtocolInstantiationError where 
+instance Exception ByronProtocolInstantiationError where
   displayException = docToString . prettyError
 
 instance Error ByronProtocolInstantiationError where
