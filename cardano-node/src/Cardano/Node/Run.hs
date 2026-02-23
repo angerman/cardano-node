@@ -37,6 +37,7 @@ import           Cardano.Node.Configuration.Logging (LoggingLayer (..), createLo
                    nodeBasicInfo, shutdownLoggingLayer)
 import           Cardano.Node.Configuration.NodeAddress
 import           Cardano.Node.Configuration.POM (NodeConfiguration (..),
+                   NodePruningPolicy (..),
                    PartialNodeConfiguration (..), TimeoutOverride (..),
                    defaultPartialNodeConfiguration, makeNodeConfiguration,
                    parseNodeConfigurationFP, getForkPolicy)
@@ -67,7 +68,7 @@ import           Cardano.Tracing.Tracers
 
 import qualified Ouroboros.Consensus.Config as Consensus
 import           Ouroboros.Consensus.Config.SupportsNode (ConfigSupportsNode (..))
-import           Ouroboros.Consensus.Node (SnapshotPolicyArgs (..),
+import           Ouroboros.Consensus.Node (PruningPolicy (..), SnapshotPolicyArgs (..),
                    NodeDatabasePaths (..), RunNodeArgs (..), StdRunNodeArgs (..))
 import           Ouroboros.Consensus.Protocol.Praos.AgentClient (KESAgentClientTrace)
 import           Ouroboros.Consensus.Ledger.SupportsMempool (GenTxId)
@@ -561,8 +562,13 @@ handleSimpleNode blockType runP tracers nc onKernel = do
           , srnSnapshotPolicyArgs           = snapshotPolicyArgs
           , srnQueryBatchSize               = queryBatchSize
           , srnLdbFlavorArgs                = selectorToArgs ldbBackend
+          , srnPruningPolicy                = toConsensusPruningPolicy (ncPruningPolicy nc)
           }
  where
+  toConsensusPruningPolicy :: NodePruningPolicy -> PruningPolicy
+  toConsensusPruningPolicy NodeNoPruning = NoPruning
+  toConsensusPruningPolicy (NodePruneKeepChunks n) = PruneKeepChunks n
+
   customizeChainSyncTimeout :: ChainSyncIdleTimeout
   customizeChainSyncTimeout = case ncChainSyncIdleTimeout nc of
     NoTimeoutOverride -> Configuration.defaultChainSyncIdleTimeout

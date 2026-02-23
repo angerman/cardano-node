@@ -12,6 +12,7 @@
 
 module Cardano.Node.Configuration.POM
   ( NodeConfiguration (..)
+  , NodePruningPolicy (..)
   , ResponderCoreAffinityPolicy (..)
   , PartialNodeConfiguration(..)
   , TimeoutOverride (..)
@@ -61,6 +62,7 @@ import           Data.Monoid (Last (..))
 import           Data.Text (Text)
 import qualified Data.Text as Text
 import           Data.Time.Clock (DiffTime, secondsToDiffTime)
+import           Data.Word (Word64)
 import           Data.Yaml (decodeFileThrow)
 import           GHC.Generics (Generic)
 import           Options.Applicative
@@ -74,6 +76,23 @@ import           Generic.Data.Orphans ()
 -- this case that we want to /NOT/ override the default timeout.
 data TimeoutOverride = NoTimeoutOverride | TimeoutOverride DiffTime
   deriving (Eq, Show)
+
+-- | Pruning policy for the ImmutableDB, parsed from YAML configuration.
+-- When enabled, old chunk files are removed to keep the database size bounded.
+data NodePruningPolicy
+  = -- | No pruning (default). The ImmutableDB grows without bound.
+    NodeNoPruning
+  | -- | Keep the last @n@ chunks, pruning everything older.
+    NodePruneKeepChunks !Word64
+  deriving (Eq, Show)
+
+instance FromJSON NodePruningPolicy where
+  parseJSON = withObject "NodePruningPolicy" $ \v -> do
+    mode <- v .: "mode" :: Aeson.Parser Text
+    case mode of
+      "no-pruning" -> pure NodeNoPruning
+      "keep-chunks" -> NodePruneKeepChunks <$> v .: "chunks"
+      _ -> fail $ "Unknown pruning mode: " <> Text.unpack mode
 
 data NodeConfiguration
   = NodeConfiguration
@@ -174,6 +193,9 @@ data NodeConfiguration
        , ncGenesisConfig :: GenesisConfig
 
        , ncResponderCoreAffinityPolicy :: ResponderCoreAffinityPolicy
+
+         -- ImmutableDB pruning
+       , ncPruningPolicy :: !NodePruningPolicy
        } deriving (Eq, Show)
 
 -- | We expose the `Ouroboros.Network.Mux.ForkPolicy` as a `NodeConfiguration` field.
@@ -269,6 +291,9 @@ data PartialNodeConfiguration
        , pncGenesisConfigFlags :: !(Last GenesisConfigFlags)
 
        , pncResponderCoreAffinityPolicy :: !(Last ResponderCoreAffinityPolicy)
+
+         -- ImmutableDB pruning
+       , pncPruningPolicy :: !(Last NodePruningPolicy)
        } deriving (Eq, Generic, Show)
 
 instance AdjustFilePaths PartialNodeConfiguration where
@@ -381,6 +406,9 @@ instance FromJSON PartialNodeConfiguration where
         <$> v .:? "ResponderCoreAffinityPolicy"
         <*> v .:? "ForkPolicy" -- deprecated
 
+      -- ImmutableDB pruning
+      pncPruningPolicy <- Last <$> v .:? "PruningPolicy"
+
       pure PartialNodeConfiguration {
              pncProtocolConfig
            , pncSocketConfig = Last . Just $ SocketConfig mempty mempty mempty pncSocketPath
@@ -425,6 +453,7 @@ instance FromJSON PartialNodeConfiguration where
            , pncPeerSharing
            , pncGenesisConfigFlags
            , pncResponderCoreAffinityPolicy
+           , pncPruningPolicy
            }
     where
       parseMempoolCapacityBytesOverride v = parseNoOverride <|> parseOverride
@@ -687,6 +716,7 @@ defaultPartialNodeConfiguration =
     , pncGenesisConfigFlags = Last (Just defaultGenesisConfigFlags)
       -- https://ouroboros-consensus.cardano.intersectmbo.org/haddocks/ouroboros-consensus-diffusion/Ouroboros-Consensus-Node-Genesis.html#v:defaultGenesisConfigFlags
     , pncResponderCoreAffinityPolicy = Last $ Just NoResponderCoreAffinity
+    , pncPruningPolicy = Last $ Just NodeNoPruning
     }
 
 lastOption :: Parser a -> Parser (Last a)
@@ -798,6 +828,8 @@ makeNodeConfiguration pnc = do
 
   ncResponderCoreAffinityPolicy <- lastToEither "Missing ResponderCoreAffinityPolicy" $ pncResponderCoreAffinityPolicy pnc
 
+  ncPruningPolicy <- lastToEither "Missing PruningPolicy" $ pncPruningPolicy pnc
+
   let deadlineTargets =
         PeerSelectionTargets {
           targetNumberOfRootPeers = ncDeadlineTargetOfRootPeers,
@@ -872,6 +904,7 @@ makeNodeConfiguration pnc = do
              , ncConsensusMode
              , ncGenesisConfig
              , ncResponderCoreAffinityPolicy
+             , ncPruningPolicy
              }
 
 ncProtocol :: NodeConfiguration -> Protocol
